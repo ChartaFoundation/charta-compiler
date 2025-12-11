@@ -1,0 +1,148 @@
+---
+description: Charta architecture patterns and component guidelines
+globs:
+  - "charta-core/**"
+  - "charta-vm/**"
+  - "charta-compiler/**"
+  - "charta-ir/**"
+  - "ARCHITECTURE.md"
+alwaysApply: true
+---
+
+# Charta Architecture Rules
+
+## Architecture Layers
+
+Charta follows a layered architecture:
+
+1. **Language Layer**: Textual Syntax → AST → IR
+2. **IR Layer**: Machine-readable program representation
+3. **VM Layer**: Runtime execution engine
+4. **Host Integration Layer**: Embedding in applications
+
+## Component Boundaries
+
+### charta-core
+- Core language semantics
+- Type system
+- Effect system
+- Formal semantics
+
+### charta-ir
+- IR schema definition
+- IR serialisation/deserialisation
+- IR validation
+
+### charta-vm
+- Scan cycle execution
+- State management (signals, coils, timers, blocks)
+- Evidence store
+- Explanation store
+
+### charta-compiler
+- Textual syntax parsing
+- AST construction
+- Name resolution
+- Type checking
+- IR emission
+
+### charta-stdlib
+- Standard blocks
+- Common patterns
+- Timer library
+- Evidence normalization blocks
+
+## Execution Model
+
+### Scan Cycle
+
+The VM executes deterministic scan cycles:
+
+1. **Read Phase**: Environment provides signal values (ι)
+2. **Block Phase**: Evaluate all blocks to compute derived signals
+3. **Rung Phase**: Evaluate all rungs to determine coil updates
+4. **Update Phase**: Update coil states
+5. **Action Phase**: Trigger actions for newly energised coils
+
+### Evidence Layer Integration
+
+Evidence layer integrates into scan cycle:
+
+1. **Read Phase**: Raw probabilistic inputs from LLMs/OCR/sensors
+2. **Normalization Phase**: Evidence normalization blocks transform inputs
+3. **Block Phase**: Blocks may produce evidence-typed outputs
+4. **Rung Phase**: Guards reference evidence properties
+5. **Update Phase**: Coils update based on evidence-based evaluations
+6. **Action Phase**: Deterministic actions triggered
+
+### State Management
+
+- **Store (σ)**: Current values of all signals and coils
+- **Timer State (τ)**: Internal state of all timer blocks
+- **Block State**: Internal state of all function blocks
+- **Explanation Store**: Decision and explanation artefacts
+- **Evidence Store**: Evidence objects with confidence, source, metadata
+
+## IR Schema Compliance
+
+All IR must conform to `spec/ir-schema.json`:
+
+- Use proper structure for signals, coils, blocks, networks, rungs
+- Include required fields
+- Follow type definitions
+- Validate against schema before committing
+
+## Integration Patterns
+
+### Event-Driven
+```
+Application Event → Charta Signal → Charta Cycle → Coil Output → Application Action
+```
+
+### Polling
+```
+Application polls Charta → Charta returns current coil states → Application acts
+```
+
+### Embedded
+```
+Charta VM embedded in application → Direct function calls → Synchronous execution
+```
+
+## Component Guidelines
+
+### When Adding New Components
+
+1. **Define boundaries clearly**: What belongs in this component?
+2. **Minimise dependencies**: Only depend on what's necessary
+3. **Follow naming conventions**: Use `charta-` prefix for components
+4. **Document interfaces**: Public APIs must be documented
+5. **Add tests**: Unit and integration tests required
+
+### When Modifying IR Schema
+
+1. **Maintain backward compatibility** when possible
+2. **Version the schema**: Update version in schema
+3. **Document changes**: Add to changelog
+4. **Provide migration tools**: If breaking changes
+5. **Update all consumers**: Compiler, VM, tooling
+
+## Safety and Governance
+
+### Safety Interlocks
+
+- NO/NC contacts provide fail-safe patterns
+- Governance signals gate critical operations
+- Constraint violations immediately de-energise critical coils
+
+### Effect System
+
+- Track effects through block evaluation
+- Enforce safety constraints statically
+- Prevent agent effects in safety-critical paths
+
+## References
+
+- Architecture documentation: [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- IR schema: [spec/ir-schema.json](../../spec/ir-schema.json)
+- Formal semantics: [charta-core/semantics.md](../../charta-core/semantics.md)

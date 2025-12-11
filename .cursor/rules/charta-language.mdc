@@ -1,0 +1,283 @@
+---
+description: Charta language syntax, semantics, and patterns
+globs:
+  - "**/*.charta"
+  - "charta-compiler/**"
+  - "charta-core/**"
+  - "spec/**"
+alwaysApply: true
+---
+
+# Charta Language Rules
+
+## Language Philosophy
+
+Charta is a **post-product**, **LLM-native**, **MCP-aware**, **agent-cooperative** programming language designed for describing behaviour in an ecosystem of intelligent components, not for writing traditional products.
+
+## Core Syntax Patterns
+
+### Signals
+
+Signals are boolean inputs from the environment:
+
+```charta
+signal submission_received(submission_id)
+signal system_ok
+signal governance_ok
+signal cost_within_limit
+```
+
+- Use descriptive names that indicate the condition being signalled
+- Parameterised signals use parentheses: `signal_name(param1, param2)`
+- Evidence-typed signals: `signal income_amount: Evidence[Numeric]`
+
+### Coils
+
+Coils are boolean outputs/control flags:
+
+```charta
+coil allow_review(submission_id)
+coil require_human_escalation(submission_id)
+coil start_pipeline(submission_id)
+```
+
+- Use action-oriented names (allow, require, start, enable, etc.)
+- Can be parameterised like signals
+- Can be marked as `critical` for safety-critical operations
+- Can be `latching` to maintain state
+
+### Rungs
+
+Rungs are logic circuits that evaluate guards and energise/de-energise coils:
+
+```charta
+rung start_review:
+  when NO submission_received(submission_id) 
+    AND NO system_ok 
+    AND NO governance_ok 
+    AND NO cost_within_limit
+  then energise allow_review(submission_id)
+```
+
+**Contact Types:**
+- `NO x`: Normally Open - passes when signal `x` is true
+- `NC x`: Normally Closed - passes when signal `x` is false
+
+**Guard Operators:**
+- `AND` - series connection (all must pass)
+- `OR` - parallel connection (any can pass)
+- `NOT` - negation
+
+**Actions:**
+- `energise coil_name(params)` - set coil to true
+- `de_energise coil_name(params)` - set coil to false
+- `escalate message` - trigger escalation
+- `require condition` - require condition to be met
+
+### Evidence Properties in Guards
+
+Guards can reference properties of evidence-typed signals:
+
+```charta
+rung validate_income:
+  when income_amount.confidence < 0.95
+  then escalate human_verification("low confidence")
+
+rung accept_address:
+  when address_match.confidence > 0.90 AND NOT address_match.disputed
+  then energise accept_address_match
+```
+
+**Evidence Properties:**
+- `evidence.confidence` - Confidence level (0.0 to 1.0)
+- `evidence.disputed` - Whether evidence is disputed
+- `evidence.verifiable` - Whether evidence can be verified
+- `evidence.source` - Source label ("LLM", "OCR", "API", "user", "sensor")
+- `evidence.evidence_type` - Evidence type label
+- `evidence.permitted_use` - List of permitted use classes
+
+### Blocks
+
+Blocks are function blocks with typed inputs/outputs and internal state:
+
+```charta
+block Summariser:
+  inputs:
+    s: submission
+  outputs:
+    summary: summary_text
+  internals:
+    cache: memory(task, retain_for="24h")
+  implementation:
+    summary = model.profile("llm.medium").summarise(s.text)
+  effect: Agent["llm.medium"]
+```
+
+**Effect Types:**
+- `Pure` - No external interaction
+- `IO` - Environment interaction
+- `Agent[profile]` - Uses agent/LLM profile
+- `MCP[tool]` - Calls MCP tool
+- `Ruleset[ruleset_name]` - Invokes ruleset
+- `Explain` - Generates explanations
+- `Combined` - Multiple effects
+
+### Networks
+
+Networks connect blocks in a dataflow:
+
+```charta
+network SubmissionReview:
+  wires:
+    s -> Summariser.s
+    Summariser.summary -> Classifier.summary
+    Summariser.summary -> RiskScreener.summary
+    Classifier.themes -> RiskScreener.themes
+  outputs:
+    summary = Summariser.summary
+    themes = Classifier.themes
+    sentiment = Classifier.sentiment
+```
+
+- Use `->` for wire connections: `source -> target.port`
+- Outputs map network outputs to block outputs
+
+### Agents
+
+Agents are first-class language constructs:
+
+```charta
+agent summariser:
+  profile: "llm.medium"
+  trust_level: "bounded"
+  memory:
+    scope: "task"
+    retain_for: "24h"
+  capabilities:
+    accepts: submission(text)
+    yields: summary(text), key_points(list[text])
+```
+
+**Trust Levels:**
+- `bounded` - Limited, guarded use
+- `guarded` - Requires additional checks
+- `open` - Full access (use with caution)
+
+**Memory Scopes:**
+- `task` - Per-task memory
+- `session` - Per-session memory
+- `project` - Project-wide memory
+- `persistent` - Permanent memory
+
+### Types
+
+Behavioural types describe allowed behaviours:
+
+```charta
+type submission(text):
+  origin: "external_user"
+  sensitivity: "high"
+  contains:
+    pii: true
+  allowed_uses:
+    - "summarisation"
+    - "classification"
+  forbidden_uses:
+    - "model_training"
+    - "marketing"
+```
+
+### Evidence Types
+
+Evidence types enable deterministic collapse of probabilistic inputs:
+
+```charta
+type Evidence[T]:
+  value: T
+  confidence: float  # 0.0 to 1.0
+  source: label
+  evidence_type: label
+  disputed: bool
+  verifiable: bool
+  permitted_use: list[label]
+```
+
+### Module Structure
+
+```charta
+module review_submissions_ai
+
+context: "Assist analysts to review public submissions..."
+
+intent:
+  goal: "Summarise each submission, classify by theme..."
+
+constraints:
+  data_privacy:
+    jurisdiction: "AU"
+    pii_handling: "mask before model access"
+  quality:
+    min_precision: 0.85
+    min_recall: 0.75
+  cost:
+    max_cost_per_submission: "$0.02"
+
+actors:
+  agent summariser
+  agent classifier
+  tool mcp.hansard
+
+flows:
+  on event new_submission:
+    use pipeline standard_review
+```
+
+## Safety Constraints
+
+- **No agent effect in safety-critical path**: Safety-critical coils can only be influenced by Pure or Ruleset blocks
+- **Evidence confidence thresholds**: Always check confidence before using evidence in final decisions
+- **Fail-safe patterns**: Use NC contacts for safety-critical gates
+- **Governance interlocks**: Gate all operations with governance_ok signals
+
+## Anti-Patterns to Avoid
+
+1. **Don't use Agent effects in safety-critical paths**
+   ```charta
+   # BAD
+   block SafetyCritical:
+     effect: Agent["llm.medium"]  # ❌ Agent in safety path
+   
+   # GOOD
+   block SafetyCritical:
+     effect: Ruleset["safety_rules"]  # ✅ Ruleset only
+   ```
+
+2. **Don't use low-confidence evidence for final decisions**
+   ```charta
+   # BAD
+   rung final_decision:
+     when income_amount.confidence > 0.50  # ❌ Too low
+   
+   # GOOD
+   rung final_decision:
+     when income_amount.confidence >= 0.95  # ✅ High confidence
+   ```
+
+3. **Don't skip explanation generation**
+   ```charta
+   # BAD
+   rung notify_user:
+     when decision_made
+     then notify_user  # ❌ No explanation
+   
+   # GOOD
+   rung notify_user:
+     when decision_made AND explanation_available
+     then notify_user  # ✅ Explanation required
+   ```
+
+## References
+
+- Full specification: [SPECIFICATION.md](../../SPECIFICATION.md)
+- Examples: [examples/](../../examples/)
+- Concept documentation: [docs/concepts/](../../docs/concepts/)
